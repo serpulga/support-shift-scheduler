@@ -773,65 +773,65 @@ def generate_schedule_with_ortools():
 
 
 # MAIN CODE BLOCK
+if __name__ == '__main__':
+    # Production (read input from command line):
 
-# Production (read input from command line):
+    sys.stderr.write("Command line args: %s\n" % sys.argv)
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "-i", "--input", help="Scheduler input JSON file path", required=True
+    )
+    args = parser.parse_args()
+    input_filename = args.input.strip()
 
-sys.stderr.write("Command line args: %s\n" % sys.argv)
-parser = argparse.ArgumentParser()
-parser.add_argument(
-    "-i", "--input", help="Scheduler input JSON file path", required=True
-)
-args = parser.parse_args()
-input_filename = args.input.strip()
+    # Testing (define input directly):
 
-# Testing (define input directly):
+    # input_filename = 'support-shift-scheduler-input.json'
 
-# input_filename = 'support-shift-scheduler-input.json'
+    # Load and validate JSON input:
 
-# Load and validate JSON input:
+    input_json = json.load(open(input_filename))
+    input_json_schema = json.load(
+        open("../lib/schemas/support-shift-scheduler-input.schema.json")
+    )
+    try:
+        jsonschema.validate(input_json, input_json_schema)
+    except jsonschema.exceptions.ValidationError as err:
+        print("Input JSON validation error", err)
+        sys.exit(1)
 
-input_json = json.load(open(input_filename))
-input_json_schema = json.load(
-    open("../lib/schemas/support-shift-scheduler-input.schema.json")
-)
-try:
-    jsonschema.validate(input_json, input_json_schema)
-except jsonschema.exceptions.ValidationError as err:
-    print("Input JSON validation error", err)
-    sys.exit(1)
+    # Define variables from options:
+    scheduler_options = input_json["options"]
+    start_Monday = scheduler_options["startMondayDate"]
+    num_days = int(scheduler_options["numConsecutiveDays"])
+    num_tracks = int(scheduler_options["numSimultaneousTracks"])
+    start_hour = int(scheduler_options["supportStartHour"])
+    end_hour = int(scheduler_options["supportEndHour"])
+    min_duration = int(scheduler_options["shiftMinDuration"])
+    max_duration = int(scheduler_options["shiftMaxDuration"])
+    solver_timeout = int(scheduler_options["optimizationTimeout"])
 
-# Define variables from options:
-scheduler_options = input_json["options"]
-start_Monday = scheduler_options["startMondayDate"]
-num_days = int(scheduler_options["numConsecutiveDays"])
-num_tracks = int(scheduler_options["numSimultaneousTracks"])
-start_hour = int(scheduler_options["supportStartHour"])
-end_hour = int(scheduler_options["supportEndHour"])
-min_duration = int(scheduler_options["shiftMinDuration"])
-max_duration = int(scheduler_options["shiftMaxDuration"])
-solver_timeout = int(scheduler_options["optimizationTimeout"])
+    # Other global variables:
+    work_hours = end_hour - start_hour
+    num_slots = 24
 
-# Other global variables:
-work_hours = end_hour - start_hour
-num_slots = 24
+    start_date = dateparse(start_Monday).date()
+    delta = timedelta(days=1)
+    days = [start_date]
 
-start_date = dateparse(start_Monday).date()
-delta = timedelta(days=1)
-days = [start_date]
+    for d in range(1, num_days):
+        days.append(days[d - 1] + delta)
 
-for d in range(1, num_days):
-    days.append(days[d - 1] + delta)
+    [df_agents, df_nights] = setup_dataframes()
 
-[df_agents, df_nights] = setup_dataframes()
+    # Determine unavailable agents for each day:
+    unavailable_employees = []
 
-# Determine unavailable agents for each day:
-unavailable_employees = []
+    for d in range(num_days):
+        unavailable_employees.append(get_unavailable_employees(days[d]))
 
-for d in range(num_days):
-    unavailable_employees.append(get_unavailable_employees(days[d]))
+    # Remove agents from the model who are not available at all this week:
+    remove_agents_not_available_this_week()
 
-# Remove agents from the model who are not available at all this week:
-remove_agents_not_available_this_week()
-
-# Create schedule:
-output_sched = generate_schedule_with_ortools()
+    # Create schedule:
+    output_sched = generate_schedule_with_ortools()
